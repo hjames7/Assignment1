@@ -1,0 +1,26 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 2012
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MsgClient", "MsgClient\MsgClient.vcxproj", "{7CB8B89B-6E5C-4DEC-A81B-C750761B6969}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MsgServer", "MsgServer\MsgServer.vcxproj", "{0A21A4C6-12B7-4CCD-86FB-6F96166767F4}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Release|Win32 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{7CB8B89B-6E5C-4DEC-A81B-C750761B6969}.Debug|Win32.ActiveCfg = Debug|Win32
+		{7CB8B89B-6E5C-4DEC-A81B-C750761B6969}.Debug|Win32.Build.0 = Debug|Win32
+		{7CB8B89B-6E5C-4DEC-A81B-C750761B6969}.Release|Win32.ActiveCfg = Release|Win32
+		{7CB8B89B-6E5C-4DEC-A81B-C750761B6969}.Release|Win32.Build.0 = Release|Win32
+		{0A21A4C6-12B7-4CCD-86FB-6F96166767F4}.Debug|Win32.ActiveCfg = Debug|Win32
+		{0A21A4C6-12B7-4CCD-86FB-6F96166767F4}.Debug|Win32.Build.0 = Debug|Win32
+		{0A21A4C6-12B7-4CCD-86FB-6F96166767F4}.Release|Win32.ActiveCfg = Release|Win32
+		{0A21A4C6-12B7-4CCD-86FB-6F96166767F4}.Release|Win32.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
