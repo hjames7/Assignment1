@@ -11,22 +11,21 @@
 //
 //    Note: There are no command line options for this sample.
 //
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <winsock2.h>		// Windows equiv. to UNIX libraries
 #include <windows.h>
 #include <map>
-#include <vector>
 #include <ws2ipdef.h>
 #include <WS2tcpip.h>
+#include "../common/buffer.h"
 
 #pragma comment (lib, "Ws2_32.lib")
 
 #define PORT 5150
 #define SERVPORT "5150"
 #define	ADDR "127.0.0.1"
-#define DATA_BUFSIZE 8192
+#define DATA_BUFSIZE 2048
 
 void *get_in_addr(struct sockaddr *sa)
 {
@@ -37,25 +36,13 @@ void *get_in_addr(struct sockaddr *sa)
     return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
-typedef struct _SOCKET_INFORMATION {
-	CHAR Buffer[DATA_BUFSIZE];
-	WSABUF DataBuf;
+typedef struct _CLIENT_INFORMATION {
 	SOCKET Socket;
-	OVERLAPPED Overlapped;
-	DWORD BytesSEND;
-	DWORD BytesRECV;
-} SOCKET_INFORMATION, * LPSOCKET_INFORMATION;
+	std::string name;
+} _CLIENT_INFORMATION;
 
-// Map of rooms (should be 8 rooms of max capacity of 8)
-std::map< std::string, std::vector< SOCKET > > chatRooms;
-
-// Prototypes
-BOOL CreateSocketInformation(SOCKET s);
-void FreeSocketInformation(DWORD Index);
-
-// Global var
-DWORD TotalSockets = 0;
-LPSOCKET_INFORMATION SocketArray[FD_SETSIZE]; // Maximum size of connections on entire server
+// Map of rooms
+std::map< std::string, std::vector< _CLIENT_INFORMATION > > chatRooms;
 
 int main(int argc, char **argv)
 {
@@ -208,104 +195,115 @@ int main(int argc, char **argv)
 			}
 			printf("get some data \n");
 
-			// - INSERT COMMAND READING [oooooo~] -
-			//if (!buf.compare(0, 5, "!join")) {
-			//	// Extract the room name
-			//	if (isInARoom) {
-			//		printf("You can only be in one room at a time [currently].\n");
-			//	} else {
-			//		size_t pos = inputStr.find(" ");
-			//		if (pos != std::string::npos) {
-			//			size_t nextPos = inputStr.find(" ", pos + 1);
-			//			if (nextPos != std::string::npos) {
-			//				connectedRoom = inputStr.substr(pos, nextPos);
-			//			}
-			//		}
-			//		if (connectedRoom != "") {
-			//			sendbuf = "";
-			//			strcpy(sendbuf, inputStr.c_str());
-			//			iResult = send( ConnectSocket, sendbuf, (int)strlen(sendbuf), 0 );
-			//			if (iResult == SOCKET_ERROR) {
-			//				printf("Send failed with error: %d\n", WSAGetLastError());
-			//				WSACleanup();
-			//				return 1;
-			//			}
-			//			printf("You have joined the room named [%d].\n", connectedRoom);
-			//		}
-			//	}
-			//} else if (!inputStr.compare(0, inputStr.size(), "!leave")) {
-			//	// Disconnect from the room if you're connected to one
-			//	if (isInARoom) {
-			//		sendbuf = "";
-			//		strcpy(sendbuf, inputStr.c_str());
-			//		iResult = send( ConnectSocket, sendbuf, (int)strlen(sendbuf), 0 );
-			//		if (iResult == SOCKET_ERROR) {
-			//			printf("Send failed with error: %d\n", WSAGetLastError());
-			//			WSACleanup();
-			//			return 1;
-			//		}
-			//		printf("You have left the room named [%d].\n", connectedRoom);
-			//		connectedRoom = "";
-			//		isInARoom = false;
-			//	} else { // Otherwise, tell the client they're silly
-			//		printf("Silly; you're not in a room!");
-			//	}
-
-			//} else if (!inputStr.compare(0, 4, "!msg")) {
-			//	if (isInARoom) {
-			//		std::string messageStr;
-			//		messageStr.append("!msg ");
-			//		messageStr.append(username);
-			//		messageStr.append(": ");
-			//		size_t pos = inputStr.find(" ");
-			//		if (pos == std::string::npos) {
-			//			printf("Message error: Please try again!\n");
-			//		} else {
-			//			messageStr.append(inputStr.substr(pos, std::string::npos));
-			//			sendbuf = "";
-			//			strcpy(sendbuf, messageStr.c_str());
-			//			iResult = send( ConnectSocket, sendbuf, (int)strlen(sendbuf), 0 );
-			//			if (iResult == SOCKET_ERROR) {
-			//				printf("Send failed with error: %d\n", WSAGetLastError());
-			//				WSACleanup();
-			//				return 1;
-			//			}
-			//		}
-			//	} else {
-			//		printf("Please join a room before trying this...\n");
-			//	}
-			//} else if (!inputStr.compare(0, inputStr.size(), "!quit")) {
-			//	isGoingToQuit = true;
-			//	// Disconnect from the room if you're connected to one
-			//	if (isInARoom) {
-			//		sendbuf = "";
-			//		strcpy(sendbuf, "!leave");
-			//		iResult = send( ConnectSocket, sendbuf, (int)strlen(sendbuf), 0 );
-			//		if (iResult == SOCKET_ERROR) {
-			//			printf("Send failed with error: %d\n", WSAGetLastError());
-			//			WSACleanup();
-			//			return 1;
-			//		}
-			//		printf("You have left the room named [%d].\n", connectedRoom);
-			//		isInARoom = false;
-			//	}
-			//} else {
-			//	printf("Command error! Reminder: Please enter "
-			//		"'!help' to receive a list of commands.\n");
-			//}
-
-			// We go some data from a client
-			for(j = 0; j <= fdmax; j++) {
-				// Send to everyone...
-				if (FD_ISSET(j, &master)) {
-					// ...literally everyone!
-					send(j, buf, nbytes, 0);
-					// ...except the listener
-					/*if (j != listener) {
-						send(j, buf, nbytes, 0);
-					}*/
+			// - COMMAND READING [oooooo~] -
+			std::string dsrlzdBuf(buf);
+			if (!dsrlzdBuf.compare(0, 5, "!join")) {
+				// Extract the room name
+				_CLIENT_INFORMATION cli;
+				cli.Socket = i;
+				std::string roomName;
+				size_t pos = dsrlzdBuf.find(" ");
+				if (pos != std::string::npos) {
+					size_t nextPos = dsrlzdBuf.find(" ", pos + 1);
+					if (nextPos != std::string::npos) {
+						roomName = dsrlzdBuf.substr(pos + 1, nextPos - (pos + 1));
+						cli.name = dsrlzdBuf.substr(nextPos + 1, std::string::npos);
+					}
+					chatRooms[roomName].push_back(cli);
+					std::string msg;
+					msg.append(cli.name);
+					msg.append(" has joined the room [");
+					msg.append(roomName);
+					msg.append("].");
+					strncpy_s(buf, msg.c_str(), DATA_BUFSIZE);
+					for(j = 0; j <= fdmax; j++) {
+						// Send to everyone...
+						if (FD_ISSET(j, &master)) {
+							for (int k = 0; k < chatRooms[roomName].size(); k++) 
+							{
+								// ...in the room
+								if (chatRooms[roomName][k].Socket == j
+									&& j != i)
+								{
+									send(j, buf, nbytes, 0);
+								}
+							}
+						}
+					}
+				}
+			} else if (!dsrlzdBuf.compare(0, 6, "!leave"))
+			{
+				std::string roomName;
+				size_t pos = dsrlzdBuf.find(" ");
+				if (pos != std::string::npos) {
+					roomName = dsrlzdBuf.substr(pos + 1, std::string::npos);
+					std::string msg;
+					int ij = 0;
+					for (;ij < chatRooms[roomName].size(); ij++) {
+						msg.append(chatRooms[roomName][ij].name);
+						break;
+					}
+					chatRooms[roomName].erase(chatRooms[roomName]
+					.begin() + ij);
+					msg.append(" has left the room [");
+					msg.append(roomName);
+					msg.append("].");
+					strncpy_s(buf, msg.c_str(), DATA_BUFSIZE);
+					for(j = 0; j <= fdmax; j++) {
+						// Send to everyone...
+						if (FD_ISSET(j, &master)) {
+							for (int k = 0; k < chatRooms[roomName].size(); k++) 
+							{
+								// ...in the room
+								if (chatRooms[roomName][k].Socket == j
+									&& j != i)
+								{
+									send(j, buf, nbytes, 0);
+								}
+							}
+						}
+					}
+				}
+			} else if (!dsrlzdBuf.compare(0, 4, "!msg"))
+			{
+				std::string roomName, IOMsg;
+				size_t pos = dsrlzdBuf.find(" ");
+				if (pos != std::string::npos) {
+					size_t nextPos = dsrlzdBuf.find(" ", pos + 1);
+					if (nextPos != std::string::npos) {
+						roomName = dsrlzdBuf.substr(pos + 1, nextPos - (pos + 1));
+						IOMsg = dsrlzdBuf.substr(nextPos + 1, std::string::npos);
+						strncpy_s(buf, IOMsg.c_str(), DATA_BUFSIZE);
+						for(j = 0; j <= fdmax; j++) {
+							// Send to everyone...
+							if (FD_ISSET(j, &master)) {
+								for (int k = 0; k < chatRooms[roomName].size(); k++) 
+								{
+									// ...in the room
+									if (chatRooms[roomName][k].Socket == j
+										&& j != i)
+									{
+										send(j, buf, nbytes, 0);
+									}
+								}
+							}
+						}
+					}
 				}
 			}
+
+			// We go some data from a client
+			//for(j = 0; j <= fdmax; j++) {
+			//	// Send to everyone...
+			//	if (FD_ISSET(j, &master)) {
+			//		// ...literally everyone!
+			//		send(j, buf, nbytes, 0);
+			//		// ...except the listener
+			//		/*if (j != listener) {
+			//			send(j, buf, nbytes, 0);
+			//		}*/
+			//	}
+			//}
 		}
 	}
 
@@ -318,46 +316,4 @@ int main(int argc, char **argv)
 	recv(socket, &client->buffer.getData()[writeIndex]..)
 	send(socket, &buffer.getData()[0]..)
 	*/
-}
-
-BOOL CreateSocketInformation(SOCKET s)
-{
-	LPSOCKET_INFORMATION SI;
-
-	printf("Accepted socket number %d\n", s);
-
-	if ((SI = (LPSOCKET_INFORMATION) GlobalAlloc(GPTR, sizeof(SOCKET_INFORMATION))) == NULL)
-	{
-		printf("GlobalAlloc() failed with error %d\n", GetLastError());
-		return FALSE;
-	}
-	else
-		printf("GlobalAlloc() for SOCKET_INFORMATION is OK!\n");
-
-	// Prepare SocketInfo structure for use
-	SI->Socket = s;
-	SI->BytesSEND = 0;
-	SI->BytesRECV = 0;
-
-	SocketArray[TotalSockets] = SI;
-	TotalSockets++;
-	return(TRUE);
-}
-
-void FreeSocketInformation(DWORD Index)
-{
-	LPSOCKET_INFORMATION SI = SocketArray[Index];
-	DWORD i;
-
-	closesocket(SI->Socket);
-	printf("Closing socket number %d\n", SI->Socket);
-	GlobalFree(SI);
-
-	// Squash the socket array
-	for (i = Index; i < TotalSockets; i++)
-	{
-		SocketArray[i] = SocketArray[i + 1];
-	}
-
-	TotalSockets--;
 }

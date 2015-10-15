@@ -12,91 +12,38 @@
 #include <winsock2.h>
 #include <WS2tcpip.h>
 #include <stdlib.h>
-#include <stdio.h>
 #include <iostream>
-#include <string>
+#include "../common/buffer.h"
 
 #pragma comment (lib, "Ws2_32.lib")
 
-#define DEFAULT_COUNT       20
 #define DEFAULT_BUFLEN      2048
 #define DEFAULT_PORT        "5150"
 #define	DEFAULT_ADDR		"127.0.0.1"
-#define DEFAULT_MESSAGE     "\'A test message from client\'"
 
+Buffer rwBuf(DEFAULT_BUFLEN);
 //char szServer[128];				// Server to connect to
 //char szMessage[1024];				// Message to send to sever
 //int   iPort     = DEFAULT_PORT;		// Port on server to connect to
 //DWORD dwCount   = DEFAULT_COUNT;	// Number of times to send message
 //BOOL  bSendOnly = FALSE;			// Send data only; don't receive
 
-std::string username;		// - "Screen name"; attached to text messages to display who wrote it
-std::string connectedRoom;	// - The "room" the current user is in.
-							// - On server side, determines who sees messages
-bool isInARoom = false;		// - Determines if certain commands are eligible
-bool isGoingToQuit = false; // - Set to 'true' when "!quit" command is used
+std::string username;						// - "Screen name"; attached to text messages to display who wrote it
+std::vector<std::string> connectedRooms;	// - The "room" the current user is in.
+											// - On server side, determines who sees messages
+bool isInARoom = false;						// - Determines if certain commands are eligible
+bool isGoingToQuit = false;					// - Set to 'true' when "!quit" command is used
 
-//// Function: help:
-//// Description: Print usable commands to console
 void help()
 {
 	printf("You have asked for help? Please see the list of available commands: \n");
-	printf("    !join [room_name]  ---  Join/create a room by that name\n");
-	printf("    !leave             ---  Leave the current room [only if user is in one]\n");
-	printf("    !refresh           ---  Check for new messages\n");
-	printf("    !msg               ---  Sends a message in current chat [if user's in one]\n");
-	printf("    !quit              ---  Close the connection to server and leave app\n");
+	printf("    !join [room]           ---  Join/create a room by that name\n");
+	printf("    !leave [room]          ---  Leave the current room [only if user is in one]\n");
+	printf("    !refresh               ---  Check for new messages\n");
+	printf("    !msg [room] [msg]      ---  Sends a message in current chat [if user's in one]\n");
+	printf("    !quit                  ---  Close the connection to server and leave app\n");
 	printf("\n");
 }
-
-//// Function: usage:
-//// Description: Print usage information and exit
-//void usage()
-//{
-//	printf("Chapter5TestClient: client [-p:x] [-s:IP] [-n:x] [-o]\n\n");
-//	printf("       -p:x      Remote port to send to\n");
-//	printf("       -s:IP     Server's IP address or hostname\n");
-//	printf("       -n:x      Number of times to send message\n");
-//	printf("       -o        Send messages only; don't receive\n");
-//	printf("\n");
-//}
-
-// Function: ValidateArgs
-// Description:
-//    Parse the command line arguments, and set some global flags
-//    to indicate what actions to perform
-//void ValidateArgs(int argc, char **argv)
-//{
-//	int i;
-//
-//	for(i = 1; i < argc; i++)
-//	{
-//		if ((argv[i][0] == '-') || (argv[i][0] == '/'))
-//		{
-//			switch (tolower(argv[i][1]))
-//			{
-//			case 'p':        // Remote port
-//				if (strlen(argv[i]) > 3)
-//					iPort = atoi(&argv[i][3]);
-//				break;
-//			case 's':       // Server
-//				if (strlen(argv[i]) > 3)
-//					strcpy_s(szServer, sizeof(szServer),&argv[i][3]);
-//				break;
-//			case 'n':       // Number of times to send message
-//				if (strlen(argv[i]) > 3)
-//					dwCount = atol(&argv[i][3]);
-//				break;
-//			case 'o':       // Only send message; don't receive
-//				bSendOnly = TRUE;
-//				break;
-//			default:
-//				usage();
-//				break;
-//			}
-//		}
-//	}
-//}
 
 // Function: main
 // Description:
@@ -120,7 +67,7 @@ int __cdecl main(int argc, char **argv)
 
 	// Validate the parameters
 	if (argc != 2) {
-		printf("usage: %s server-name\n", argv[0]);
+		printf("usage: %s ip-addr\n", argv[0]);
 		return 1;
 	}
 
@@ -128,6 +75,7 @@ int __cdecl main(int argc, char **argv)
 
 	// - Have client insert a "username" so that other clients can understand who sent the text -
 	// - Not important to server per se, because it reads incoming activity via socket IDs -
+	printf("Read the README before starting the program.\n");
 	printf("Please enter a username. Hit 'Enter' to confirm.\n");
 	getline(std::cin, username);
 	
@@ -195,94 +143,118 @@ int __cdecl main(int argc, char **argv)
 		getline(std::cin, inputStr);
 		if (!inputStr.compare(0, inputStr.size(), "!help")) {
 			help();
-			continue;
+			//continue;
 		} else if (!inputStr.compare(0, 5, "!join")) {
 			// Extract the room name
-			if (isInARoom) {
-				printf("You can only be in one room at a time [currently].\n");
-			} else {
-				size_t pos = inputStr.find(" ");
-				if (pos != std::string::npos) {
-					connectedRoom = inputStr.substr(pos + 1, std::string::npos);
-				}
-				if (connectedRoom != "") {
-					strcpy(sendbuf, inputStr.c_str());
-					iResult = send( ConnectSocket, sendbuf, DEFAULT_BUFLEN, 0 );
-					if (iResult == SOCKET_ERROR) {
-						printf("Send failed with error: %d\n", WSAGetLastError());
-						WSACleanup();
-						return 1;
-					}
-					printf("You have joined the room named [%s].\n", connectedRoom.c_str());
-					isInARoom = true;
-				}
+			std::string msgStr, room;
+			size_t pos = inputStr.find(" ");
+			if (pos != std::string::npos) {
+				room = inputStr.substr(pos + 1, std::string::npos);
+				msgStr.append(inputStr);
+				msgStr.append(" ");
+				msgStr.append(username);
 			}
-			continue;
-		} else if (!inputStr.compare(0, inputStr.size(), "!leave")) {
-			// Disconnect from the room if you're connected to one
-			if (isInARoom) {
-				strcpy(sendbuf, inputStr.c_str());
+			if (room != "") {
+				strncpy_s(sendbuf, msgStr.c_str(), DEFAULT_BUFLEN);
 				iResult = send( ConnectSocket, sendbuf, DEFAULT_BUFLEN, 0 );
 				if (iResult == SOCKET_ERROR) {
 					printf("Send failed with error: %d\n", WSAGetLastError());
 					WSACleanup();
 					return 1;
 				}
-				printf("You have left the room named [%s].\n", connectedRoom.c_str());
-				connectedRoom = "";
-				isInARoom = false;
+				printf("You have joined the room [%s].\n", room.c_str());
+				connectedRooms.push_back(room);
+				if (connectedRooms.size() >= 1)
+					isInARoom = true;
+			}
+			//continue;
+		} else if (!inputStr.compare(0, 6, "!leave")) {
+			// Disconnect from the room if you're connected to one
+			if (isInARoom) {
+				strncpy_s(sendbuf, inputStr.c_str(), DEFAULT_BUFLEN);
+				iResult = send( ConnectSocket, sendbuf, DEFAULT_BUFLEN, 0 );
+				if (iResult == SOCKET_ERROR) {
+					printf("Send failed with error: %d\n", WSAGetLastError());
+					WSACleanup();
+					return 1;
+				}
+				printf("You have left the room [%s].\n", inputStr.substr(6+1, std::string::npos));
+				for (size_t i = 0; i < connectedRooms.size(); i++) {
+					if (connectedRooms[i] == inputStr.substr(6+1, std::string::npos)) {
+						connectedRooms.erase(connectedRooms.begin()+i);
+					}
+				}
+				if (connectedRooms.size() == 0)
+					isInARoom = false;
 			} else { // Otherwise, tell the client they're silly
 				printf("Silly; you're not in a room!");
 			}
-			continue;
+			//continue;
 		} else if (!inputStr.compare(0, 4, "!msg")) {
 			if (isInARoom) {
-				std::string messageStr;
-				messageStr.append("!msg ");
-				messageStr.append(username);
-				messageStr.append(": ");
+				std::string msgStr;
+				msgStr.append("!msg ");
 				size_t pos = inputStr.find(" ");
-				if (pos == std::string::npos) {
-					printf("Message error: Please try again!\n");
-				} else {
-					messageStr.append(inputStr.substr(pos + 1, std::string::npos));
-					strcpy(sendbuf, messageStr.c_str());
-					iResult = send( ConnectSocket, sendbuf, DEFAULT_BUFLEN, 0 );
-					if (iResult == SOCKET_ERROR) {
-						printf("Send failed with error: %d\n", WSAGetLastError());
-						WSACleanup();
-						return 1;
+				if (pos != std::string::npos) {
+					size_t nextPos = inputStr.find(" ", pos + 1);
+					if (nextPos != std::string::npos) {
+						msgStr.append(inputStr.substr(pos + 1, nextPos - (pos + 1)));
+						msgStr.append(" ");
+						msgStr.append(username);
+						msgStr.append("[");
+						msgStr.append(inputStr.substr(pos + 1, nextPos - (pos + 1)));
+						msgStr.append("]: ");
+						msgStr.append(inputStr.substr(nextPos + 1, std::string::npos));
+						strncpy_s(sendbuf, msgStr.c_str(), DEFAULT_BUFLEN);
+						iResult = send( ConnectSocket, sendbuf, DEFAULT_BUFLEN, 0 );
+						if (iResult == SOCKET_ERROR) {
+							printf("Send failed with error: %d\n", WSAGetLastError());
+							WSACleanup();
+							return 1;
+						}
 					}
+					else {
+						printf("Usage: !msg [roomname] [msg] Please try again!\n");
+					}
+				} else {
+					printf("Message error: Please try again!\n");
 				}
 			} else {
 				printf("Please join a room before trying this...\n");
 			}
-			continue;
+			//continue;
 		} else if (!inputStr.compare(0, inputStr.size(), "!quit")) {
 			isGoingToQuit = true;
-			// Disconnect from the room if you're connected to one
+			// Disconnect from the room[s] if you're connected to [at least] one
 			if (isInARoom) {
-				strcpy(sendbuf, "!leave");
-				iResult = send( ConnectSocket, sendbuf, DEFAULT_BUFLEN, 0 );
-				if (iResult == SOCKET_ERROR) {
-					printf("Send failed with error: %d\n", WSAGetLastError());
-					WSACleanup();
-					return 1;
+				for (size_t i = 0; i < connectedRooms.size(); i++) {
+					std::string msgStr;
+					msgStr.append("!leave ");
+					msgStr.append(connectedRooms[i]);
+					strncpy_s(sendbuf, msgStr.c_str(), DEFAULT_BUFLEN);
+					iResult = send( ConnectSocket, sendbuf, DEFAULT_BUFLEN, 0 );
+					if (iResult == SOCKET_ERROR) {
+						printf("Send failed with error: %d\n", WSAGetLastError());
+						WSACleanup();
+						return 1;
+					}
+					printf("You have left the room [%s].\n", connectedRooms[i].c_str());
 				}
-				printf("You have left the room named [%s].\n", connectedRoom.c_str());
 				isInARoom = false;
 			}
-			continue;
+			//continue;
 		} else if (inputStr.compare(0, 8, "!refresh")) {
 			printf("Command error! Reminder: Please enter "
 				"'!help' to receive a list of commands.\n");
 		}
 
 		// Check for new messages coming in (runs as long as there are some
+		bool firstTime = true;
 		do {
 			hasNewMessages = false;
 			readset = clientMaster;
 			if (select(ConnectSocket + 1, &readset, NULL, NULL, &tv) == -1) {
+				// ???
 				perror("select");
 			}
 
@@ -292,15 +264,15 @@ int __cdecl main(int argc, char **argv)
 					hasNewMessages = true;
 					iResult = recv(ConnectSocket, recvbuf, DEFAULT_BUFLEN, 0);
 					if( iResult > 0 )
-						printf("%s.\n", recvbuf);
+						printf("%s\n", recvbuf);
 				} else {
 					continue;
 				}
 			}
-			// If we're here, there's isn't
-			if (hasNewMessages != true) {
+			if (firstTime && !hasNewMessages) {
 				printf("No new messages.\n");
 			}
+			firstTime = false;
 		} while (hasNewMessages == true);
 	} while (!isGoingToQuit);
 
@@ -323,29 +295,6 @@ int __cdecl main(int argc, char **argv)
 	} while ( iResult > 0 );
 
 	printf("Bye-bye!\n");
-
-	// Send an initial buffer
-	/*iResult = send( ConnectSocket, sendbuf, (int)strlen(sendbuf), 0 );
-	if (iResult == SOCKET_ERROR) {
-		printf("Send failed with error: %d\n", WSAGetLastError());
-		WSACleanup();
-		return 1;
-	}
-
-	printf("Bytes Sent: %ld\n", iResult);*/
-
-	
-
-	// Receive until the peer close the connection
-	/*do {
-		iResult = recv(ConnectSocket, recvbuf, recvbuflen, 0);
-		if ( iResult > 0 )
-			printf("Bytes received: %d\n", iResult);
-		else if ( iResult == 0 )
-			printf("Connection closed\n");
-		else
-			printf("recv failed with error: %d\n", WSAGetLastError());
-	} while ( iResult > 0 );*/
 	
 	// cleanup
 	closesocket(ConnectSocket);
